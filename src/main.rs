@@ -6,6 +6,9 @@ use std::collections::HashSet;
 use std::collections::HashMap;
 use std::env;
 use std::time::Instant;
+use std::fs::File;
+use std::io::Write;
+use chrono::Local;
 
 struct Ocelli;
 
@@ -36,6 +39,43 @@ impl Ocelli {
         }
 
         entropy
+    }
+
+    /// Use the chop & stack method on an array of grayscale values
+    fn chop_and_stack(&self, mut data: Vec<u8>) -> Vec<u8> {
+        // Ensure the input length is divisible by 4 by trimming excess bytes
+        let remainder = data.len() % 4;
+        if remainder != 0 {
+            data.truncate(data.len() - remainder);
+        }
+    
+        // Determine the length of each fold
+        let fold_len = data.len() / 4;
+    
+        // Split the data into four folds
+        let mut folds: Vec<Vec<u8>> = data
+        .chunks(fold_len)
+        .map(|chunk| chunk.to_vec())
+        .collect();
+
+        // Reverse the second and fourth folds
+        if folds.len() > 1 {
+            folds[1].reverse(); // Reverse the second row
+        }
+        if folds.len() > 3 {
+            folds[3].reverse(); // Reverse the fourth row
+        }
+        
+        // Combine the folds by summing corresponding elements and applying modulo 256
+        let mut combined: Vec<u8> = vec![0u8; fold_len];
+        for i in 0..fold_len {
+            combined[i] = ((folds[0][i] as u16
+                + folds[1][i] as u16
+                + folds[2][i] as u16
+                + folds[3][i] as u16) % 256) as u8;
+        }
+    
+        combined
     }
 
     /// Apply Van Neumann whitening to a vector of entropy bits
@@ -90,17 +130,6 @@ impl Ocelli {
         })
     }
 
-    /// Calculates the required number of frames for the desired entropy bytes
-    fn required_frames(&self, bytes: usize, width: usize, height: usize) -> usize {
-        let max_bytes = width * height / 8;
-
-        if max_bytes == 0 {
-            panic!("Invalid resolution: too few pixels to generate entropy.");
-        }
-
-        (bytes + max_bytes - 1) / max_bytes + 1
-    }
-
     /// Determines if the camera is covered based on the unique grayscale values
     fn is_covered(&self, grayscale: &[u8], threshold: usize) -> bool {
         let unique_values: HashSet<_> = grayscale.iter().copied().collect();
@@ -115,7 +144,6 @@ fn main() -> opencv::Result<()> {
         std::process::exit(1);
     }
 
-    // Check if the whitening flag is set
     let whiten_flag = args.contains(&String::from("-w"));
 
     let length: usize = args[1].parse().expect("Failed to parse entropy length as a number");
@@ -127,7 +155,6 @@ fn main() -> opencv::Result<()> {
         panic!("Failed to open the camera");
     }
 
-    // Set camera resolution
     cam.set(opencv::videoio::CAP_PROP_FRAME_WIDTH, width as f64)?;
     cam.set(opencv::videoio::CAP_PROP_FRAME_HEIGHT, height as f64)?;
 
@@ -140,25 +167,24 @@ fn main() -> opencv::Result<()> {
     cam.read(&mut frame)?;
     let mut gray_frame = core::Mat::default();
     imgproc::cvt_color(&frame, &mut gray_frame, imgproc::COLOR_BGR2GRAY, 0)?;
-    let grayscale_data = gray_frame.data_bytes().expect("Failed to get grayscale data");
+    let grayscale_data = gray_frame.data_bytes().expect("Failed to get grayscale data").to_vec();
 
-    if !ocelli.is_covered(grayscale_data, 50) {
-        println!("Camera is not covered. Stopping...");
-        // return Ok(());
-    }
+    let uncovered = !ocelli.is_covered(&grayscale_data, 50);
 
-    // Start timing
-    let start_time = Instant::now();
+    println!(
+        "Starting entropy generation... Using {}",
+        if uncovered {
+            "chop_and_stack"
+        } else {
+            "get_entropy"
+        }
+    );
 
-    // Calculate required frames
-    let required_frames = ocelli.required_frames(length, width, height);
-    println!("Capturing {} frames to generate {} bytes of entropy...", required_frames, length);
-
-    // Generate entropy
     let mut total_entropy = Vec::new();
     let shannon_threshold = 4.0;
+    let mut previous_frame_data = grayscale_data.clone();
 
-    let mut previous_frame_data = grayscale_data.to_vec();
+    let start_time = Instant::now();
 
     while total_entropy.len() < length {
         cam.read(&mut frame)?;
@@ -166,42 +192,71 @@ fn main() -> opencv::Result<()> {
         imgproc::cvt_color(&frame, &mut gray_frame, imgproc::COLOR_BGR2GRAY, 0)?;
         let current_frame_data = gray_frame.data_bytes().expect("Failed to get grayscale data").to_vec();
 
-        let entropy = ocelli.get_entropy(&current_frame_data, &previous_frame_data);
-        let shannon_entropy = ocelli.shannon(&entropy);
+        let mut entropy: Vec<u8> = Vec::new();
+        let mut shannon_entropy = 0.0;
+
+        if uncovered {
+            // Process with chop_and_stack
+            entropy = ocelli.chop_and_stack(current_frame_data.clone());
+
+        } else {
+            // Process with get_entropy
+            entropy = ocelli.get_entropy(&current_frame_data, &previous_frame_data);
+
+            previous_frame_data = current_frame_data;
+        }
+
+        if whiten_flag {
+            entropy = ocelli.whiten(&entropy);
+        }
+
+        shannon_entropy = ocelli.shannon(&entropy);
 
         if shannon_entropy >= shannon_threshold {
+            
             total_entropy.extend(entropy);
+        
         } else {
             println!(
-                "Rejected entropy array (Shannon entropy: {:.3}). Retrying...",
+                "Rejected stacked entropy array (Shannon entropy: {:.3}). Retrying...",
                 shannon_entropy
             );
         }
 
-        previous_frame_data = current_frame_data;
-    }
-
-    if whiten_flag {
-        total_entropy = ocelli.whiten(&total_entropy);
+        println!(
+            "Collected {} of {} bytes of entropy...",
+            total_entropy.len(),
+            length
+        );
     }
 
     // Convert entropy to hex string
-    let entropy_hex = total_entropy
-        .iter()
-        .take(length)
-        .map(|byte| format!("{:02x}", byte))
-        .collect::<String>();
+    // let entropy_hex = total_entropy
+    //     .iter()
+    //     .take(length)
+    //     .map(|byte| format!("{:02x}", byte))
+    //     .collect::<String>();
+    // println!("Generated entropy (hex): {}", entropy_hex);
 
-    println!("Generated entropy (hex): {}", entropy_hex);
-    
     let total_shannon_entropy = ocelli.shannon(&total_entropy);
-    
-    // End timing
+
     let elapsed_time = start_time.elapsed();
     println!(
         "Process completed in {:.3} seconds.\nShannon Entropy {:.3}.",
-        elapsed_time.as_secs_f64(), total_shannon_entropy
+        elapsed_time.as_secs_f64(),
+        total_shannon_entropy
     );
+
+    // Save the generated entropy to a binary file
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+    let method = if uncovered { "chop_and_stack" } else { "get_entropy" };
+    let whitened = if whiten_flag { "_whitened" } else { "" };
+    let filename = format!("{}{}_{}.bin", method, whitened, timestamp);
+
+    let mut file = File::create(&filename).expect("Failed to create file");
+    file.write_all(&total_entropy).expect("Failed to write data to file");
+
+    println!("Entropy saved to file: {}", filename);
 
     Ok(())
 }
