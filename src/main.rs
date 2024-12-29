@@ -13,7 +13,7 @@ use chrono::Local;
 struct Ocelli;
 
 impl Ocelli {
-    fn get_entropy(&self, current: &Vec<u8>, previous: &Vec<u8>, width: usize, minimum_distance: usize) -> Vec<u8> {
+    fn chop_and_tack(&self, current: &Vec<u8>, previous: &Vec<u8>, width: usize, minimum_distance: usize) -> Vec<u8> {
         let mut entropy = Vec::new();
         let mut current_byte = 0u8;
         let mut bit_count = 0;
@@ -21,7 +21,7 @@ impl Ocelli {
         // Calculate the height of the frame
         let height = current.len() / width;
     
-        // Skip the first and last 100 rows (width * 100 pixels)
+        // Skip 100 pixels at the top and bottom of the frame
         let start_row = 100;
         let end_row = height - 100;
     
@@ -29,9 +29,8 @@ impl Ocelli {
             panic!("Resolution is too small to apply the grid selection with the given offset.");
         }
     
-        // Iterate through rows, skipping the top and bottom 100 rows
         for row in start_row..end_row {
-            // Skip the first 100 pixels in the row
+            // Skip 100 pixels at the left and right of the frame
             let row_start = row * width + 100;
             let row_end = (row + 1) * width - 100;
     
@@ -65,7 +64,7 @@ impl Ocelli {
         entropy
     }
 
-    fn pick_and_fold(&self, data: &Vec<u8>, current_frame_index: usize) -> Vec<u8> {
+    fn pick_and_flip(&self, data: &Vec<u8>, current_frame_index: usize) -> Vec<u8> {
         let mut entropy = Vec::new();
         let mut current_byte = 0u8;
         let mut bit_count = 0;
@@ -223,10 +222,10 @@ fn main() -> opencv::Result<()> {
         let mut entropy: Vec<u8> = Vec::new();
 
         if uncovered {
-            entropy = ocelli.pick_and_fold(&current_frame_data, frame_index);
+            entropy = ocelli.pick_and_flip(&current_frame_data, frame_index);
             frame_index = frame_index + 1;
         } else {
-            entropy = ocelli.get_entropy(&current_frame_data, &previous_frame_data, width, 20);
+            entropy = ocelli.chop_and_tack(&current_frame_data, &previous_frame_data, width, 30);
             previous_frame_data = current_frame_data;
         }
 
@@ -263,7 +262,7 @@ fn main() -> opencv::Result<()> {
 
     // Save the generated entropy to a binary file
     let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
-    let method = if uncovered { "pick_and_fold" } else { "get_entropy" };
+    let method = if uncovered { "pick_and_flip" } else { "chop_and_tack" };
     let whitened = if whiten_flag { "_whitened" } else { "" };
     let filename = format!("{}{}_{}.bin", method, whitened, timestamp);
 
