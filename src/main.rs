@@ -63,7 +63,41 @@ impl Ocelli {
         }
         
         entropy
-    }        
+    }
+
+    fn pick_and_fold(&self, data: &Vec<u8>, current_frame_index: usize) -> Vec<u8> {
+        let mut entropy = Vec::new();
+        let mut current_byte = 0u8;
+        let mut bit_count = 0;
+    
+        // Iterate through each pixel in the array
+        for &pixel_brightness in data {
+            // Check if the brightness is within the valid range [2, 253]
+            if (2..=253).contains(&pixel_brightness) {
+                // Extract the least significant bit (LSB)
+                let mut lsb = pixel_brightness & 1;
+    
+                // If the frame index is even, flip the bit
+                if current_frame_index % 2 == 0 {
+                    lsb ^= 1; // Flip the bit (0 -> 1, 1 -> 0)
+                }
+    
+                // Add the bit to the current byte
+                current_byte = (current_byte << 1) | lsb;
+                bit_count += 1;
+    
+                // If we have 8 bits, push the byte to the entropy vector
+                if bit_count == 8 {
+                    entropy.push(current_byte);
+                    current_byte = 0;
+                    bit_count = 0;
+                }
+            }
+        }
+    
+        entropy
+    }
+       
 
     /// Apply Van Neumann whitening to a vector of entropy bits
     fn whiten(&self, entropy: &Vec<u8>) -> Vec<u8> {
@@ -174,10 +208,11 @@ fn main() -> opencv::Result<()> {
     );
 
     let mut total_entropy = Vec::new();
-    let shannon_threshold = 4.5;
+    let shannon_threshold = 4.0;
     let mut previous_frame_data = grayscale_data.clone();
 
     let start_time = Instant::now();
+    let mut frame_index = 1;
 
     while total_entropy.len() < length {
         cam.read(&mut frame)?;
@@ -187,8 +222,13 @@ fn main() -> opencv::Result<()> {
 
         let mut entropy: Vec<u8> = Vec::new();
 
-        entropy = ocelli.get_entropy(&current_frame_data, &previous_frame_data, width, 20);
-        previous_frame_data = current_frame_data;
+        if uncovered {
+            entropy = ocelli.pick_and_fold(&current_frame_data, frame_index);
+            frame_index = frame_index + 1;
+        } else {
+            entropy = ocelli.get_entropy(&current_frame_data, &previous_frame_data, width, 20);
+            previous_frame_data = current_frame_data;
+        }
 
         if whiten_flag {
             entropy = ocelli.whiten(&entropy);
@@ -223,7 +263,7 @@ fn main() -> opencv::Result<()> {
 
     // Save the generated entropy to a binary file
     let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
-    let method = if uncovered { "chop_and_stack" } else { "get_entropy" };
+    let method = if uncovered { "pick_and_fold" } else { "get_entropy" };
     let whitened = if whiten_flag { "_whitened" } else { "" };
     let filename = format!("{}{}_{}.bin", method, whitened, timestamp);
 
