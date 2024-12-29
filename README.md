@@ -1,12 +1,12 @@
 # ocelli: Camera-Based TRNG
 
-**Ocelli** is a Rust application that generates high-quality entropy using a camera feed. The application supports two entropy generation methods (`get_entropy` and `chop_and_stack`) and optionally applies Van Neumann whitening for enhanced randomness. Generated entropy is saved as a binary file.
+**Ocelli** is a Rust application that generates high-quality entropy using a camera feed. The application supports two entropy generation methods (`chop_and_tack` and `pick_and_flip`) and optionally applies Van Neumann whitening for enhanced randomness. Generated entropy is saved as a binary file.
 
 ## Features
 
 - **Entropy Methods**:
-  - `get_entropy`: Compares pixel values between frames.
-  - `chop_and_stack`: Combines and processes pixel data with reversed rows.
+  - `chop_and_tack`: Compares pixel values between frames.
+  - `pick_and_flip`: Processes pixel data and flips bits every second frame.
 - **Van Neumann Whitening**: Optional, enabled via the `-w` flag.
 - **Shannon Entropy Test**: Ensures the randomness quality of generated entropy.
 
@@ -19,10 +19,10 @@ cargo run --release -- <entropy_length_in_bytes> <resolution_width> <resolution_
 ### Example
 
 ```bash
-cargo run --release -- 1024 640 480 -w
+cargo run --release -- 1 1024 -w
 ```
 
-This generates 1024 bytes of whitened entropy using a 640x480 resolution.
+This generates 1024 bytes of whitened entropy using camera 1.
 
 ## Requirements
 
