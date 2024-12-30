@@ -3,6 +3,11 @@ name = "ocelli"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "ocelli"
+path = "src/lib.rs"
+
 [dependencies]
-chrono = "0.4.39"
-opencv = "0.93.5"
+v4l = "0.14"
+chrono = "0.4"
+image = "0.25.5"
