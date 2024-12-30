@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    // Check if the whitening flag is set
+    // Check if the quick flag is set
     let quick = args.contains(&String::from("-q"));
 
     let camera_index: usize = args[1].parse().expect("Failed to parse camera index as a number");
@@ -74,39 +74,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let grayscale_data1 = frame_to_grayscale(&data1);
 
-            if !ocelli.is_covered(&grayscale_data1, 50) {
-
-                let entropy: Vec<u8>;
-                
-                if quick {
-                    // Quicker capture using Pick and Flip
-                    entropy = ocelli.whiten(&ocelli.pick_and_flip(&grayscale_data1, frame_count as usize));
-                } else {
+            let mut entropy: Vec<u8> = [0].to_vec();
+            
+            if quick {
+                // Quicker capture using Pick and Flip
+                entropy = ocelli.whiten(&ocelli.pick_and_flip(&grayscale_data1, frame_count as usize));
+            } else {
+                if ocelli.is_covered(&grayscale_data1, 50) {
                     // Capture second frame
                     let (data2, _) = stream.next().expect("Failed to capture second frame");
                     let grayscale_data2 = frame_to_grayscale(&data2);
 
                     // Generate entropy using chop_and_tack
                     entropy = ocelli.chop_and_tack(&grayscale_data1, &grayscale_data2, format.width as usize, 30);
-                }
-
-                let shannon_entropy = ocelli.shannon(&entropy);
-
-                if shannon_entropy >= shannon_threshold {
-                    total_entropy.extend(entropy);
-                    println!(
-                        "Collected {} of {} bytes of entropy (Shannon entropy: {:.3})",
-                        total_entropy.len(),
-                        length,
-                        shannon_entropy
-                    );
                 } else {
-                    println!("Rejected entropy for frame {} (Shannon entropy: {:.3})", frame_count, shannon_entropy);
+                    println!("Camera is not covered. Please cover the camera.");
+                    frame_count = 0;
                 }
-            } else {
-                println!("Camera is not covered. Please cover the camera.");
-                frame_count = 0;
             }
+
+            let shannon_entropy = ocelli.shannon(&entropy);
+
+            if shannon_entropy >= shannon_threshold {
+                total_entropy.extend(entropy);
+                println!(
+                    "Collected {} of {} bytes of entropy (Shannon entropy: {:.3})",
+                    total_entropy.len(),
+                    length,
+                    shannon_entropy
+                );
+            } else {
+                println!("Rejected entropy for frame {} (Shannon entropy: {:.3})", frame_count, shannon_entropy);
+            }
+            
         }
     }
 
