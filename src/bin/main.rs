@@ -60,51 +60,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ocelli = Ocelli;
     let mut total_entropy = Vec::new();
     let start_time = Instant::now();
-    let shannon_threshold = 4.0;
+    let shannon_threshold = 7.9;
     let mut frame_count = 0;
 
     while total_entropy.len() < length {
         // Capture first frame
         let (data1, _) = stream.next().expect("Failed to capture frame");
-        let grayscale_data1 = frame_to_grayscale(&data1);
 
-        if ocelli.is_covered(&grayscale_data1, 50) {
-            // Skip the first 10 frames
-            while frame_count < 10 {
-                let _ = stream.next().expect("Failed to capture frame");
-                frame_count += 1;
-            }
-
-            let entropy: Vec<u8>;
-            
-            if quick {
-                // Quicker capture using Pick and Flip
-                entropy = ocelli.pick_and_flip(&grayscale_data1, frame_count as usize);
-            } else {
-                // Capture second frame
-                let (data2, _) = stream.next().expect("Failed to capture second frame");
-                let grayscale_data2 = frame_to_grayscale(&data2);
-
-                // Generate entropy using chop_and_tack
-                entropy = ocelli.chop_and_tack(&grayscale_data1, &grayscale_data2, format.width as usize, 30);
-            }
-
-            let shannon_entropy = ocelli.shannon(&entropy);
-
-            if shannon_entropy >= shannon_threshold {
-                total_entropy.extend(entropy);
-                println!(
-                    "Collected {} of {} bytes of entropy (Shannon entropy: {:.3})",
-                    total_entropy.len(),
-                    length,
-                    shannon_entropy
-                );
-            } else {
-                println!("Rejected entropy (Shannon entropy: {:.3})", shannon_entropy);
-            }
+        // Skip the first 30 frames
+        if frame_count <= 30 {
+            frame_count += 1;
         } else {
-            println!("Camera is not covered. Please cover the camera.");
-            frame_count = 0;
+
+            let grayscale_data1 = frame_to_grayscale(&data1);
+
+            if !ocelli.is_covered(&grayscale_data1, 50) {
+
+                let entropy: Vec<u8>;
+                
+                if quick {
+                    // Quicker capture using Pick and Flip
+                    entropy = ocelli.whiten(&ocelli.pick_and_flip(&grayscale_data1, frame_count as usize));
+                } else {
+                    // Capture second frame
+                    let (data2, _) = stream.next().expect("Failed to capture second frame");
+                    let grayscale_data2 = frame_to_grayscale(&data2);
+
+                    // Generate entropy using chop_and_tack
+                    entropy = ocelli.chop_and_tack(&grayscale_data1, &grayscale_data2, format.width as usize, 30);
+                }
+
+                let shannon_entropy = ocelli.shannon(&entropy);
+
+                if shannon_entropy >= shannon_threshold {
+                    total_entropy.extend(entropy);
+                    println!(
+                        "Collected {} of {} bytes of entropy (Shannon entropy: {:.3})",
+                        total_entropy.len(),
+                        length,
+                        shannon_entropy
+                    );
+                } else {
+                    println!("Rejected entropy for frame {} (Shannon entropy: {:.3})", frame_count, shannon_entropy);
+                }
+            } else {
+                println!("Camera is not covered. Please cover the camera.");
+                frame_count = 0;
+            }
         }
     }
 
