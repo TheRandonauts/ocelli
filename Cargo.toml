@@ -6,8 +6,6 @@ edition = "2021"
 [lib]
 name = "ocelli"
 path = "src/lib.rs"
+crate-type = ["cdylib"]
 
 [dependencies]
-v4l = "0.14"
-chrono = "0.4"
-image = "0.25.5"

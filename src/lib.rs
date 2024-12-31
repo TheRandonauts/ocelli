@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::slice;
 
 pub struct Ocelli;
 
@@ -134,4 +135,83 @@ impl Ocelli {
         // println!("UV: {:?}", unique_values);
         unique_values.len() < threshold
     }
+}
+
+#[no_mangle]
+pub extern "C" fn chop_and_tack(
+    current_ptr: *const u8,
+    current_len: usize,
+    previous_ptr: *const u8,
+    previous_len: usize,
+    width: usize,
+    minimum_distance: usize,
+    result_ptr: *mut u8,
+    result_len: &mut usize,
+) {
+    let current = unsafe { slice::from_raw_parts(current_ptr, current_len) };
+    let previous = unsafe { slice::from_raw_parts(previous_ptr, previous_len) };
+
+    let ocelli = Ocelli;
+    let result = ocelli.chop_and_tack(&current.to_vec(), &previous.to_vec(), width, minimum_distance);
+
+    unsafe {
+        let result_slice = slice::from_raw_parts_mut(result_ptr, result.len());
+        result_slice.copy_from_slice(&result);
+        *result_len = result.len();
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn pick_and_flip(
+    data_ptr: *const u8,
+    data_len: usize,
+    current_frame_index: usize,
+    result_ptr: *mut u8,
+    result_len: &mut usize,
+) {
+    let data = unsafe { slice::from_raw_parts(data_ptr, data_len) };
+
+    let ocelli = Ocelli;
+    let result = ocelli.pick_and_flip(data, current_frame_index);
+
+    unsafe {
+        let result_slice = slice::from_raw_parts_mut(result_ptr, result.len());
+        result_slice.copy_from_slice(&result);
+        *result_len = result.len();
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn shannon(data_ptr: *const u8, data_len: usize) -> f64 {
+    let data = unsafe { slice::from_raw_parts(data_ptr, data_len) };
+
+    let ocelli = Ocelli;
+    ocelli.shannon(&data.to_vec())
+}
+
+#[no_mangle]
+pub extern "C" fn whiten(
+    entropy_ptr: *const u8,
+    entropy_len: usize,
+    result_ptr: *mut u8,
+    result_len: &mut usize,
+) {
+    let entropy = unsafe { slice::from_raw_parts(entropy_ptr, entropy_len) };
+
+    let ocelli = Ocelli;
+    let result = ocelli.whiten(entropy);
+
+    unsafe {
+        let result_slice = slice::from_raw_parts_mut(result_ptr, result.len());
+        result_slice.copy_from_slice(&result);
+        *result_len = result.len();
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn is_covered(grayscale_ptr: *const u8, grayscale_len: usize, threshold: usize) -> bool {
+    let grayscale = unsafe { slice::from_raw_parts(grayscale_ptr, grayscale_len) };
+
+    let ocelli = Ocelli;
+    ocelli.is_covered(grayscale, threshold)
 }
