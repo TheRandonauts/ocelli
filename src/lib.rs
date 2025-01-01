@@ -6,6 +6,10 @@ pub struct Ocelli;
 impl Ocelli {
 
     pub fn chop_and_tack(&self, current: &Vec<u8>, previous: &Vec<u8>, width: usize, minimum_distance: usize) -> Vec<u8> {
+        // Extracts entropy from two frames by comparing pixel values in a specific grid pattern.
+        // The resulting entropy is constructed by appending 1s or 0s based on pixel differences.
+        // Algorithm ported from NoiseBasedCamRng by Andika Wasisto https://github.com/awasisto/camrng
+
         let mut entropy = Vec::new();
         let mut current_byte = 0u8;
         let mut bit_count = 0;
@@ -57,6 +61,11 @@ impl Ocelli {
     }
 
     pub fn pick_and_flip(&self, data: &[u8], current_frame_index: usize) -> Vec<u8> {
+        // Extracts the least significant bit (LSB) of each pixel brightness, flipping it based on the frame index.
+        // Generates entropy by combining these bits into bytes.
+        // Algorithm is a simplified version of R. Li, "A True Random Number Generator algorithm from 
+        // digital camera image noise for varying lighting conditions," doi: 10.1109/SECON.2015.7132901.
+
         let mut entropy = Vec::new();
         let mut current_byte = 0u8;
         let mut bit_count = 0;
@@ -84,6 +93,9 @@ impl Ocelli {
     }
 
     pub fn shannon(&self, data: &Vec<u8>) -> f64 {
+        // Calculates the Shannon entropy of a given byte vector to measure its randomness.
+        // Uses a frequency map to compute probabilities and their contributions to entropy.
+
         let mut frequency_map = HashMap::new();
         let data_len = data.len();
 
@@ -98,6 +110,9 @@ impl Ocelli {
     }
 
     pub fn whiten(&self, entropy: &[u8]) -> Vec<u8> {
+        // Applies von Neumann whitening to reduce bias in the input entropy.
+        // Pairs of bits are analyzed, and only unbiased pairs are used to construct the output.
+
         let mut whitened_entropy = Vec::new();
         let mut current_byte = 0u8;
         let mut bit_count = 0;
@@ -131,6 +146,11 @@ impl Ocelli {
     }
 
     pub fn is_covered(&self, grayscale: &[u8], threshold: usize) -> bool {
+        // Checks if the grayscale image contains fewer unique values than the specified threshold.
+        // Useful for ensuring the chop and tack method only sees noise and no image data, resulting
+        // in higher quality entropy.
+        // Recommended default threshold is 50
+
         let unique_values: HashSet<_> = grayscale.iter().copied().collect();
         // println!("UV: {:?}", unique_values);
         unique_values.len() < threshold
