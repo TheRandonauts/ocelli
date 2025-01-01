@@ -4,7 +4,7 @@
 
 ### Chop and Tack
 
-(ported from NoiseBasedCamRng by Andika Wasisto https://github.com/awasisto/camrng)
+(ported from [NoiseBasedCamRng](https://github.com/TheRandonauts/camrng/blob/develop/camrng%2Fsrc%2Fmain%2Fjava%2Fcom%2Fwasisto%2Fcamrng%2FNoiseBasedCamRng.kt) by [Andika Wasisto](https://github.com/awasisto))
 
 The algorithm extracts entropy from two arrays with 8 bit integers that can be obtained by taking two consecutive frames from a camera feed and reading their brightness levels. It is required to cover the lens of the camera so it only sees uniform blackness. Due to thermal and quantum effects the image sensor will still sense fluctuations in brightness.
 
@@ -12,7 +12,7 @@ The outer 100 pixel wide edges of each frames are ignored since they can be pron
 
 ### Pick and Flip
 
-(inspired by R. Li, "A True Random Number Generator algorithm from digital camera image noise for varying lighting conditions," SoutheastCon 2015, Fort Lauderdale, FL, USA, 2015, pp. 1-8, doi: 10.1109/SECON.2015.7132901.)
+(inspired by R. Li, "A True Random Number Generator algorithm from digital camera image noise for varying lighting conditions," SoutheastCon 2015, Fort Lauderdale, FL, USA, 2015, pp. 1-8, doi: [10.1109/SECON.2015.7132901](https://ieeexplore.ieee.org/document/7132901).)
 
 The algorithm extracts entropy from an array of 8-bit values (camera frame pixel brightness) by analyzing the least significant bit (LSB) of each value. This process leverages the natural variability in pixel brightness across a frame. Entropy is derived by first examining whether the brightness value of a pixel falls within the range of 2 to 253, to avoid bias. The LSB of qualifying pixel values is then used to form a bitstream. To avoid correlations, the bits of every second array are flipped. The resulting bits are sequentially packed into bytes, forming the output entropy.
 
@@ -34,7 +34,7 @@ The algorithm extracts entropy from an array of 8-bit values (camera frame pixel
 
 1. If *Chop and Tack* is to be used, utilize the `is_covered` method with a threshold of 50 to determine if the camera sensor is covered.
 2. Read the desired amount of frames from the camera and extract the brightness levels as 8 bit integers into arrays.
-3. Feed the arrays into one of the main methods and make sure to provide all required arguments.
+3. Feed the arrays into one of the main methods and make sure to provide all required arguments. If you use *Chop and Tack* a `minimum_distance` of 30 is recommended.
 4. Whitening can be applied using the `whiten` method to filter out bias and increase the entropy of the result
 5. It is recommended to check the resulting entropy quality using the `shannon` method and drop the result if it falls below a threshold (e.g. 7.9).
 6. Loop through the previous steps and accumulate the resulting entropy until the desired amount of random bytes is reached.
