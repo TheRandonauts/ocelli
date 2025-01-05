@@ -50,7 +50,7 @@ impl Ocelli {
 
     }
 
-    pub fn pick_and_flip(&self, data: &[u8], current_frame_index: usize) -> Vec<u8> {
+    pub fn pick_and_flip(&self, data: &[u8], low: u8, high: u8, current_frame_index: usize) -> Vec<u8> {
         // Extracts the least significant bit (LSB) of each pixel brightness, flipping it based on the frame index.
         // Generates entropy by combining these bits into bytes.
         // Algorithm is a simplified version of R. Li, "A True Random Number Generator algorithm from 
@@ -59,26 +59,12 @@ impl Ocelli {
         let mut entropy = Vec::new();
 
         for &pixel in data {
-            if (2..=253).contains(&pixel) { // filter bias
+            if (low..=high).contains(&pixel) { // filter bias
                 let mut lsb = pixel & 1;
                 if current_frame_index % 2 == 0 { // flip bits
                     lsb ^= 1;
                 }
                 entropy.push(lsb);
-            }
-        }
-
-        self.bits_to_bytes(&entropy)
-    }
-
-    pub fn tune_and_prune(&self, current: &Vec<u8>, previous: &Vec<u8>, low: u8, high: u8) -> Vec<u8> {
-        // Extracts the least significant bit (LSB) of each pixel brightness while filtering out bias
-        // It's a combination of methods from the other two entropy extraction algorithms
-        let mut entropy = Vec::new();
-
-        for (&c, &p) in current.iter().zip(previous.iter()) {
-            if c != p && (low..=high).contains(&c) {
-                entropy.push(c & 1);
             }
         }
 
@@ -178,6 +164,8 @@ pub extern "C" fn chop_and_tack(
 pub extern "C" fn pick_and_flip(
     data_ptr: *const u8,
     data_len: usize,
+    low: u8,
+    high: u8,
     current_frame_index: usize,
     result_ptr: *mut u8,
     result_len: &mut usize,
@@ -185,31 +173,7 @@ pub extern "C" fn pick_and_flip(
     let data = unsafe { slice::from_raw_parts(data_ptr, data_len) };
 
     let ocelli = Ocelli;
-    let result = ocelli.pick_and_flip(data, current_frame_index);
-
-    unsafe {
-        let result_slice = slice::from_raw_parts_mut(result_ptr, result.len());
-        result_slice.copy_from_slice(&result);
-        *result_len = result.len();
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn tune_and_prune(
-    current_ptr: *const u8,
-    current_len: usize,
-    previous_ptr: *const u8,
-    previous_len: usize,
-    low: u8,
-    high: u8,
-    result_ptr: *mut u8,
-    result_len: &mut usize,
-) {
-    let current = unsafe { slice::from_raw_parts(current_ptr, current_len) };
-    let previous = unsafe { slice::from_raw_parts(previous_ptr, previous_len) };
-
-    let ocelli = Ocelli;
-    let result = ocelli.tune_and_prune(&current.to_vec(), &previous.to_vec(), low, high);
+    let result = ocelli.pick_and_flip(data, low, high, current_frame_index);
 
     unsafe {
         let result_slice = slice::from_raw_parts_mut(result_ptr, result.len());
