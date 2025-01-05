@@ -5,19 +5,25 @@ pub struct Ocelli;
 
 impl Ocelli {
 
+    fn bits_to_bytes(&self, bits: &[u8]) -> Vec<u8> {
+        bits.chunks(8).filter_map(|chunk| {
+            if chunk.len() == 8 {
+                Some(chunk.iter().fold(0, |byte, &bit| (byte << 1) | bit))
+            } else {
+                None
+            }
+        }).collect()
+    }
+
     pub fn chop_and_tack(&self, current: &Vec<u8>, previous: &Vec<u8>, width: usize, minimum_distance: usize) -> Vec<u8> {
         // Extracts entropy from two frames by comparing pixel values in a specific grid pattern.
         // The resulting entropy is constructed by appending 1s or 0s based on pixel differences.
         // Algorithm ported from NoiseBasedCamRng by Andika Wasisto https://github.com/awasisto/camrng
 
         let mut entropy = Vec::new();
-        let mut current_byte = 0u8;
-        let mut bit_count = 0;
-
-        // Calculate the height of the frame
         let height = current.len() / width;
 
-        // Skip 100 pixels at the top and bottom of the frame
+        // Define bounds for the grid
         let start_row = 100;
         let end_row = height - 100;
 
@@ -25,39 +31,23 @@ impl Ocelli {
             panic!("Resolution is too small to apply the grid selection with the given offset.");
         }
 
+        // Process the grid within the defined bounds
         for row in start_row..end_row {
-            // Skip 100 pixels at the left and right of the frame
             let row_start = row * width + 100;
             let row_end = (row + 1) * width - 100;
 
-            // Select pixels in the row based on the step size
-            for pixel_index in (row_start..row_end).step_by(minimum_distance) {
-                if pixel_index >= current.len() || pixel_index >= previous.len() {
-                    continue;
-                }
-
-                let c = current[pixel_index];
-                let p = previous[pixel_index];
-
-                if c > p {
-                    current_byte = (current_byte << 1) | 1; // Append '1'
-                } else if c < p {
-                    current_byte = current_byte << 1; // Append '0'
-                } else {
-                    continue; // Skip if equal
-                }
-
-                bit_count += 1;
-
-                if bit_count == 8 {
-                    entropy.push(current_byte);
-                    current_byte = 0;
-                    bit_count = 0;
-                }
-            }
+            entropy.extend((row_start..row_end).step_by(minimum_distance)
+                .filter(|&pixel_index| pixel_index < current.len() && pixel_index < previous.len())
+                .map(|pixel_index| {
+                    let c = current[pixel_index];
+                    let p = previous[pixel_index];
+                    (c > p) as u8 - (c < p) as u8 // 1 for c > p, 0 for c < p, skips if equal
+                })
+                .filter(|&bit| bit <= 1));
         }
 
-        entropy
+        self.bits_to_bytes(&entropy)
+
     }
 
     pub fn pick_and_flip(&self, data: &[u8], current_frame_index: usize) -> Vec<u8> {
@@ -67,29 +57,32 @@ impl Ocelli {
         // digital camera image noise for varying lighting conditions," doi: 10.1109/SECON.2015.7132901.
 
         let mut entropy = Vec::new();
-        let mut current_byte = 0u8;
-        let mut bit_count = 0;
 
-        for &pixel_brightness in data {
-            if (2..=253).contains(&pixel_brightness) {
-                let mut lsb = pixel_brightness & 1;
-
-                if current_frame_index % 2 == 0 {
-                    lsb ^= 1; // Flip the bit
+        for &pixel in data {
+            if (2..=253).contains(&pixel) { // filter bias
+                let mut lsb = pixel & 1;
+                if current_frame_index % 2 == 0 { // flip bits
+                    lsb ^= 1;
                 }
-
-                current_byte = (current_byte << 1) | lsb;
-                bit_count += 1;
-
-                if bit_count == 8 {
-                    entropy.push(current_byte);
-                    current_byte = 0;
-                    bit_count = 0;
-                }
+                entropy.push(lsb);
             }
         }
 
-        entropy
+        self.bits_to_bytes(&entropy)
+    }
+
+    pub fn tune_and_prune(&self, current: &Vec<u8>, previous: &Vec<u8>, low: u8, high: u8) -> Vec<u8> {
+        // Extracts the least significant bit (LSB) of each pixel brightness while filtering out bias
+        // It's a combination of methods from the other two entropy extraction algorithms
+        let mut entropy = Vec::new();
+
+        for (&c, &p) in current.iter().zip(previous.iter()) {
+            if c != p && (low..=high).contains(&c) {
+                entropy.push(c & 1);
+            }
+        }
+
+        self.bits_to_bytes(&entropy)
     }
 
     pub fn shannon(&self, data: &Vec<u8>) -> f64 {
@@ -200,6 +193,31 @@ pub extern "C" fn pick_and_flip(
         *result_len = result.len();
     }
 }
+
+#[no_mangle]
+pub extern "C" fn tune_and_prune(
+    current_ptr: *const u8,
+    current_len: usize,
+    previous_ptr: *const u8,
+    previous_len: usize,
+    low: u8,
+    high: u8,
+    result_ptr: *mut u8,
+    result_len: &mut usize,
+) {
+    let current = unsafe { slice::from_raw_parts(current_ptr, current_len) };
+    let previous = unsafe { slice::from_raw_parts(previous_ptr, previous_len) };
+
+    let ocelli = Ocelli;
+    let result = ocelli.tune_and_prune(&current.to_vec(), &previous.to_vec(), low, high);
+
+    unsafe {
+        let result_slice = slice::from_raw_parts_mut(result_ptr, result.len());
+        result_slice.copy_from_slice(&result);
+        *result_len = result.len();
+    }
+}
+
 
 #[no_mangle]
 pub extern "C" fn shannon(data_ptr: *const u8, data_len: usize) -> f64 {
