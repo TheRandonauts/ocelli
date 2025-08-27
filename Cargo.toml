@@ -6,6 +6,9 @@ edition = "2021"
 [lib]
 name = "ocelli"
 path = "src/lib.rs"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "staticlib"]
 
-[dependencies]
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"

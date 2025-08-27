@@ -41,17 +41,38 @@ The algorithm extracts entropy from an array of 8-bit values (camera frame pixel
 
 ### Build
 
+Basic Rust build:
+
 ```bash
 cargo build --release
 ```
 
-Android
+#### Android
+Build shared libraries (`.so`) for common ABIs using `cargo-ndk`:
+
 ```bash
-cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 build --result
+cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 build --release
 ```
 
-iOS
+---
+
+#### iOS
+First build static libraries (`.a`) for device and simulator targets:
+
 ```bash
-cargo build --release --target aarch64-apple-ios
-cargo build --release --target x86_64-apple-ios
+cargo build --release --target aarch64-apple-ios      # iPhone / iPad (arm64)
+cargo build --release --target x86_64-apple-ios       # Simulator (Intel)
+cargo build --release --target aarch64-apple-ios-sim  # Simulator (Apple Silicon)
 ```
+
+Then bundle them with the public header(s) into a proper framework (`.xcframework`) that Xcode can consume:
+
+```bash
+xcodebuild -create-xcframework \
+  -library target/aarch64-apple-ios/release/libocelli.a -headers include \
+  -library target/x86_64-apple-ios/release/libocelli.a -headers include \
+  -library target/aarch64-apple-ios-sim/release/libocelli.a -headers include \
+  -output Ocelli.xcframework
+```
+
+This produces `Ocelli.xcframework/`, which you can add to your Xcode or Flutter iOS project as a vendored framework.
