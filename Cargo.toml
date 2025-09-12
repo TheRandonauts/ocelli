@@ -6,7 +6,7 @@ edition = "2021"
 [lib]
 name = "ocelli"
 path = "src/lib.rs"
-crate-type = ["cdylib", "staticlib"]
+crate-type = ["cdylib", "staticlib", "lib"]
 
 [profile.release]
 lto = true
